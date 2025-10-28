@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Alex's College Book Finder</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* Custom font setup */
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap");
+      body {
+        font-family: "Inter", sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+      /* Custom scrollbar for better detail view aesthetics */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 8px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: #6366f1; /* Indigo-500 */
+        border-radius: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background-color: #e0e7ff; /* Indigo-100 */
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <!-- React component will mount here -->
+    </div>
+
+    <!-- Load React and Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- React Application Logic (JSX/Babel) -->
+    <script type="text/babel">
+      const { useState, useEffect, useCallback } = React;
+
+      // --- Helper Functions (defined globally for scope) ---
+
+      // Helper function to get the cover image URL
+      const getCoverUrl = (coverId, size = "M") => {
+        return coverId
+          ? `https://covers.openlibrary.org/b/id/${coverId}-${size}.jpg`
+          : // Fallback placeholder image for books without covers
+            `https://placehold.co/100x150/1e293b/facc15?text=No+Cover`; // Slate-800 background, Amber-400 text
+      };
+
+      // --- Book Details Component (The New Page) ---
+
+      const BookDetails = ({ workKey, onBack, books }) => {
+        const [details, setDetails] = useState(null);
+        const [isDetailsLoading, setIsDetailsLoading] = useState(true);
+        const [detailsError, setDetailsError] = useState(null);
+
+        // Find the basic book data from the list we already fetched
+        const bookFromList = books.find((b) => b.key === workKey) || {};
+
+        const authors = Array.isArray(bookFromList?.author_name)
+          ? bookFromList.author_name.join(", ")
+          : bookFromList?.author_name || "N/A";
+        const coverId = bookFromList?.cover_i;
+        const coverUrl = getCoverUrl(coverId, "L"); // Request a large cover
+
+        // Fetch comprehensive details for the book work
+        useEffect(() => {
+          const fetchDetails = async () => {
+            if (!workKey) return;
+            setIsDetailsLoading(true);
+            setDetailsError(null);
+
+            try {
+              const url = `https://openlibrary.org${workKey}.json`;
+              const response = await fetch(url);
+
+              if (!response.ok) {
+                throw new Error("Failed to fetch detailed book data.");
+              }
+
+              const data = await response.json();
+
+              // Handle OpenLibrary's peculiar description object structure
+              let descriptionText = data.description;
+              if (
+                typeof descriptionText === "object" &&
+                descriptionText.value
+              ) {
+                descriptionText = descriptionText.value;
+              } else if (
+                typeof descriptionText !== "string" ||
+                !descriptionText.trim()
+              ) {
+                descriptionText =
+                  "No detailed summary or description available for this edition.";
+              }
+
+              setDetails({
+                subjects: data.subjects || [],
+                description: descriptionText,
+                // We can use the first_publish_date for more detail
+                firstPublished:
+                  data.first_publish_date || bookFromList.first_publish_year,
+              });
+            } catch (err) {
+              setDetailsError(
+                "Could not load full description and subject details."
+              );
+              console.error(err);
+            } finally {
+              setIsDetailsLoading(false);
+            }
+          };
+
+          fetchDetails();
+        }, [workKey]);
+
+        // Loading State Render
+        if (isDetailsLoading) {
+          return (
+            <div className="text-center p-12 text-indigo-700">
+              <h2 className="text-2xl font-bold mb-4">
+                Loading Book Details...
+              </h2>
+              <div className="mt-4 animate-spin h-10 w-10 mx-auto border-4 border-indigo-500 border-t-transparent rounded-full"></div>
+            </div>
+          );
+        }
+
+        // Error State Render
+        if (detailsError) {
+          return (
+            <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-xl mb-6 max-w-4xl mx-auto">
+              <p className="font-bold">Error:</p>
+              <p>{detailsError}</p>
+              <button
+                onClick={onBack}
+                className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+              >
+                Back to List
+              </button>
+            </div>
+          );
+        }
+
+        // Main Detail Render
+        return (
+          <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-2xl p-6 md:p-10 border-t-4 border-indigo-600">
+            <button
+              onClick={onBack}
+              className="flex items-center text-indigo-600 font-semibold mb-6 hover:text-indigo-800 transition"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 mr-1"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
+                />
+              </svg>
+              Back to Search Results
+            </button>
+
+            <div className="flex flex-col md:flex-row gap-8">
+              {/* Cover Image */}
+              <div className="flex-shrink-0 mx-auto md:mx-0">
+                <img
+                  src={coverUrl}
+                  alt={`Cover of ${bookFromList?.title || "Book"}`}
+                  className="w-40 h-60 object-cover rounded-lg shadow-xl border-4 border-indigo-100"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = getCoverUrl(null, "L");
+                  }}
+                />
+              </div>
+
+              {/* Metadata */}
+              <div className="flex-grow">
+                <h1 className="text-4xl font-extrabold text-indigo-900 leading-tight mb-2">
+                  {bookFromList?.title || details.title}
+                </h1>
+                <h2 className="text-xl font-semibold text-gray-700 mb-4">
+                  By: <span className="text-indigo-600">{authors}</span>
+                </h2>
+
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <p>
+                    <span className="font-bold text-indigo-700">
+                      First Published:
+                    </span>{" "}
+                    {details.firstPublished || "N/A"}
+                  </p>
+                  <p>
+                    <span className="font-bold text-indigo-700">
+                      Editions Found:
+                    </span>{" "}
+                    {bookFromList.edition_count || 1}
+                  </p>
+                </div>
+
+                <h3 className="text-2xl font-bold text-indigo-900 mt-6 mb-3 border-b pb-1 border-indigo-100">
+                  Subjects / Keywords
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {details.subjects.slice(0, 10).map((subject, index) => (
+                    <span
+                      key={index}
+                      className="bg-yellow-100 text-yellow-800 text-xs font-medium px-3 py-1 rounded-full shadow-sm"
+                    >
+                      {subject}
+                    </span>
+                  ))}
+                  {details.subjects.length === 0 && (
+                    <span className="text-gray-500">No subjects listed.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Description Section */}
+            <h3 className="text-2xl font-bold text-indigo-900 mt-8 mb-3 border-b pb-1 border-indigo-600">
+              Summary / Description
+            </h3>
+            <div className="text-gray-800 text-base leading-relaxed max-h-96 overflow-y-auto custom-scrollbar p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+              {details.description.split("\n").map((paragraph, index) => (
+                <p key={index} className="mb-3">
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+          </div>
+        );
+      };
+
+      // --- Main App Component ---
+
+      const App = () => {
+        const [searchTerm, setSearchTerm] = useState("");
+        const [searchQuery, setSearchQuery] = useState("");
+        const [books, setBooks] = useState([]);
+        const [isLoading, setIsLoading] = useState(false);
+        const [error, setError] = useState(null);
+        const [page, setPage] = useState(1);
+        const [hasMore, setHasMore] = useState(false);
+
+        // New state for navigation
+        const [currentView, setCurrentView] = useState("list"); // 'list' or 'detail'
+        const [selectedWorkKey, setSelectedWorkKey] = useState(null);
+
+        // Constants
+        const API_BASE_URL = "https://openlibrary.org/search.json";
+        const BOOKS_PER_PAGE = 30;
+
+        // Navigation Handlers
+        const handleViewDetails = (workKey) => {
+          setSelectedWorkKey(workKey);
+          setCurrentView("detail");
+        };
+
+        const handleBackToList = () => {
+          setSelectedWorkKey(null);
+          setCurrentView("list");
+        };
+
+        // Function to perform the API fetch with exponential backoff for reliability
+        const fetchBooks = useCallback(
+          async (query, pageNumber, retries = 3) => {
+            if (!query) return;
+
+            const url = `${API_BASE_URL}?title=${encodeURIComponent(
+              query
+            )}&limit=${BOOKS_PER_PAGE}&page=${pageNumber}`;
+
+            setIsLoading(true);
+            setError(null);
+
+            for (let i = 0; i < retries; i++) {
+              try {
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                  throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                // Filter out results that don't have a title, author, or a key for detail viewing
+                const newBooks = data.docs.filter(
+                  (book) => book.title && book.author_name && book.key
+                );
+
+                setBooks((prevBooks) =>
+                  pageNumber === 1 ? newBooks : [...prevBooks, ...newBooks]
+                );
+
+                // Check if more results are available
+                setHasMore(data.numFound > pageNumber * BOOKS_PER_PAGE);
+
+                setIsLoading(false);
+                return; // Success
+              } catch (err) {
+                if (i < retries - 1) {
+                  const delay = Math.pow(2, i) * 1000; // 1s, 2s, 4s...
+                  console.error(
+                    `Attempt ${i + 1} failed. Retrying in ${delay / 1000}s.`,
+                    err
+                  );
+                  await new Promise((resolve) => setTimeout(resolve, delay));
+                } else {
+                  setError(
+                    "Failed to fetch books after several retries. Please check your network or try a different search term."
+                  );
+                  setIsLoading(false);
+                }
+              }
+            }
+          },
+          [BOOKS_PER_PAGE]
+        );
+
+        // Effect to trigger search when searchQuery changes (on form submit or initial load)
+        useEffect(() => {
+          // Only run the search if the view is 'list'
+          if (currentView === "list") {
+            if (searchQuery) {
+              setPage(1); // Reset page to 1 for a new search
+              fetchBooks(searchQuery, 1);
+            } else {
+              // Initial search for default content
+              const initialQuery = "introduction to programming";
+              setSearchQuery(initialQuery);
+              fetchBooks(initialQuery, 1);
+            }
+          }
+        }, [searchQuery, fetchBooks, currentView]);
+
+        // Handler for loading more books
+        const handleLoadMore = () => {
+          const nextPage = page + 1;
+          setPage(nextPage);
+          fetchBooks(searchQuery, nextPage);
+        };
+
+        // Form Submission Handler
+        const handleSearchSubmit = (e) => {
+          e.preventDefault();
+          if (searchTerm.trim()) {
+            setSearchQuery(searchTerm.trim());
+            handleBackToList(); // Ensure we are on the list view when a new search starts
+          }
+        };
+
+        // Component to render a single book card
+        const BookCard = ({ book }) => {
+          const coverId = book.cover_i;
+          const coverUrl = getCoverUrl(coverId);
+
+          const authors = Array.isArray(book.author_name)
+            ? book.author_name.slice(0, 2).join(", ")
+            : book.author_name;
+
+          return (
+            <div
+              onClick={() => handleViewDetails(book.key)}
+              className="bg-white p-4 rounded-xl shadow-lg hover:shadow-2xl transition duration-300 flex space-x-4 border border-gray-200 cursor-pointer hover:border-indigo-400 hover:scale-[1.01] transform"
+            >
+              <div className="flex-shrink-0">
+                <img
+                  src={coverUrl}
+                  alt={`Cover of ${book.title}`}
+                  className="w-24 h-36 object-cover rounded-md border border-gray-300 shadow-inner"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = getCoverUrl(null); // Use placeholder on error
+                  }}
+                />
+              </div>
+              <div className="flex-grow">
+                <h3 className="text-xl font-extrabold text-indigo-800 line-clamp-2 leading-snug">
+                  {book.title}
+                </h3>
+                <p className="text-sm font-semibold text-gray-700 mt-1">
+                  by {authors}
+                </p>
+
+                <div className="mt-3 space-y-1 text-sm text-gray-600">
+                  <p className="flex items-center">
+                    <span className="font-medium text-indigo-600 mr-2">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4 inline mr-1 text-yellow-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        />
+                      </svg>
+                      First Pub:
+                    </span>
+                    {book.first_publish_year || "N/A"}
+                  </p>
+                  <p className="flex items-center">
+                    <span className="font-medium text-indigo-600 mr-2">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4 inline mr-1 text-yellow-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5s3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18s-3.332.477-4.5 1.253"
+                        />
+                      </svg>
+                      Editions:
+                    </span>
+                    {book.edition_count || 1}
+                  </p>
+                </div>
+                <p className="text-xs text-indigo-500 mt-2 font-bold uppercase tracking-wider">
+                  Click for Details
+                </p>
+              </div>
+            </div>
+          );
+        };
+
+        // Main Render
+        return (
+          <div className="min-h-screen bg-indigo-50 font-sans p-4 sm:p-8">
+            {/* Header and Search Form (always visible) */}
+            <header className="max-w-4xl mx-auto mb-8">
+              <h1 className="text-4xl font-black text-center text-gray-900 mb-2">
+                Alex's <span className="text-indigo-700">Scholarly</span>{" "}
+                Library Finder
+              </h1>
+              <p className="text-center text-gray-600 mb-6">
+                Find textbooks and research materials with enhanced detail
+                views.
+              </p>
+
+              <form
+                onSubmit={handleSearchSubmit}
+                className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3"
+              >
+                <input
+                  type="text"
+                  placeholder="e.g., Introduction to Algorithms or Organic Chemistry"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="flex-grow p-3 border border-indigo-300 rounded-lg shadow-inner focus:ring-indigo-500 focus:border-indigo-500 transition"
+                  disabled={isLoading}
+                />
+                <button
+                  type="submit"
+                  className="w-full sm:w-auto px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md shadow-indigo-300 hover:bg-indigo-700 transition duration-150 disabled:opacity-50 flex items-center justify-center"
+                  disabled={isLoading}
+                >
+                  {isLoading && page === 1 ? (
+                    <svg
+                      className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                  ) : (
+                    <>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-5 w-5 mr-2"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      Search
+                    </>
+                  )}
+                </button>
+              </form>
+            </header>
+
+            {/* Main Content Area - Conditional Rendering */}
+            <main>
+              {currentView === "list" && (
+                <div className="max-w-4xl mx-auto">
+                  {/* Error Message */}
+                  {error && (
+                    <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg mb-6">
+                      <p className="font-bold">Error:</p>
+                      <p>{error}</p>
+                    </div>
+                  )}
+
+                  {/* Initial Loading Message (for the default search) */}
+                  {!searchQuery && isLoading && books.length === 0 && (
+                    <div className="text-center p-12 text-gray-500">
+                      <p className="text-lg">Loading initial suggestions...</p>
+                      <div className="mt-4 animate-spin h-8 w-8 mx-auto border-4 border-indigo-500 border-t-transparent rounded-full"></div>
+                    </div>
+                  )}
+
+                  {/* Results Grid */}
+                  <div className="grid gap-6 md:grid-cols-2">
+                    {books.map((book, index) => (
+                      <BookCard key={book.key || index} book={book} />
+                    ))}
+                  </div>
+
+                  {/* No Results Found */}
+                  {!isLoading && books.length === 0 && searchQuery && (
+                    <div className="text-center p-12 text-gray-500 border-2 border-dashed border-indigo-300 rounded-xl mt-8">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-10 w-10 mx-auto mb-3 text-indigo-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      <h2 className="text-xl font-semibold">
+                        No books found for "{searchQuery}"
+                      </h2>
+                      <p>Try a different, less specific title or author.</p>
+                    </div>
+                  )}
+
+                  {/* Load More Button & Loader */}
+                  {(isLoading || hasMore) && (
+                    <div className="text-center mt-8">
+                      {isLoading && page > 1 ? (
+                        <div className="flex justify-center items-center space-x-2 p-3 text-indigo-600 font-medium">
+                          <svg
+                            className="animate-spin h-5 w-5"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            ></circle>
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                          </svg>
+                          <span>Loading more...</span>
+                        </div>
+                      ) : (
+                        hasMore && (
+                          <button
+                            onClick={handleLoadMore}
+                            className="px-8 py-3 bg-indigo-500 text-white font-bold rounded-lg hover:bg-indigo-600 transition duration-150 shadow-md shadow-indigo-200"
+                            disabled={isLoading}
+                          >
+                            Load Next {BOOKS_PER_PAGE} Results
+                          </button>
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Detail View */}
+              {currentView === "detail" && selectedWorkKey && (
+                <BookDetails
+                  workKey={selectedWorkKey}
+                  onBack={handleBackToList}
+                  books={books}
+                />
+              )}
+            </main>
+          </div>
+        );
+      };
+
+      // Standard React 18 mounting
+      const rootElement = document.getElementById("root");
+      ReactDOM.createRoot(rootElement).render(<App />);
+    </script>
+  </body>
+</html>
